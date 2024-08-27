@@ -93,7 +93,8 @@ def sample(
     os.makedirs(output_folder, exist_ok=True)
 
     # Read input video frames i.e. images at view 0
-    print(f"Reading {input_path}")
+    print(f"Readi#ng {input_path}")
+    #TODO: Understand these two functions and write examples for them
     processed_input_path = preprocess_video(
         input_path,
         remove_bg=remove_bg,

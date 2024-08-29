@@ -177,6 +177,7 @@ class GeneralConditioner(nn.Module):
         if force_uc_zero_embeddings is None:
             force_uc_zero_embeddings = []
         ucg_rates = list()
+        #self.embedders contain the CLIP encoder, video encoder, and the time encoder   
         for embedder in self.embedders:
             ucg_rates.append(embedder.ucg_rate)
             embedder.ucg_rate = 0.0
@@ -1034,6 +1035,9 @@ class VideoPredictionEmbedderWithEncoder(AbstractEmbModel):
 
 
 class FrozenOpenCLIPImagePredictionEmbedder(AbstractEmbModel):
+    '''
+    Frozen open clip embedding
+    '''
     def __init__(
         self,
         open_clip_embedding_config: Dict,

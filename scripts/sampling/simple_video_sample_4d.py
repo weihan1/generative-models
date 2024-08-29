@@ -39,7 +39,7 @@ def sample(
     encoding_t: int = 8,  # Number of frames encoded at a time! This eats most VRAM. Reduce if necessary.
     decoding_t: int = 4,  # Number of frames decoded at a time! This eats most VRAM. Reduce if necessary.
     device: str = "cuda",
-    elevations_deg: Optional[Union[float, List[float]]] = 10.0,
+    elevations_deg: Optional[Union[float, List[float]]] = 10.0, #absolute angle of target view, it is the angle between xy plane to line.
     azimuths_deg: Optional[List[float]] = None,
     image_frame_ratio: Optional[float] = 0.917,
     verbose: Optional[bool] = False,
@@ -48,6 +48,9 @@ def sample(
     """
     Simple script to generate multiple novel-view videos conditioned on a video `input_path` or multiple frames, one for each
     image file in folder `input_path`. If you run out of VRAM, try decreasing `decoding_t` and `encoding_t`.
+    
+    1. preprocess_video: removes the background, find the minimum rectangle that contains all frames. Then find the smallest bouding square. 
+    2. read_video: reads every frame of the video and normalize them between [-1,1] 
     """
     # Set model config
     T = 5  # number of frames per sample
@@ -93,7 +96,7 @@ def sample(
     os.makedirs(output_folder, exist_ok=True)
 
     # Read input video frames i.e. images at view 0
-    print(f"Readi#ng {input_path}")
+    print(f"Reading {input_path}")
     #TODO: Understand these two functions and write examples for them
     processed_input_path = preprocess_video(
         input_path,
@@ -104,6 +107,7 @@ def sample(
         output_folder=output_folder,
         image_frame_ratio=image_frame_ratio,
     )
+    #reads the images as a list of images of shape (1,3,h,w)
     images_v0 = read_video(processed_input_path, n_frames=n_frames, device=device)
 
     # Get camera viewpoints
@@ -111,20 +115,23 @@ def sample(
         elevations_deg = [elevations_deg] * n_views_sv3d
     assert (
         len(elevations_deg) == n_views_sv3d
-    ), f"Please provide 1 value, or a list of {n_views_sv3d} values for elevations_deg! Given {len(elevations_deg)}"
+    ), f"Please provide 1 value, or a list of {n_views_sv3d} values for elevations_deg! Given {len(elevations_deg)} frames"
     if azimuths_deg is None:
         azimuths_deg = np.linspace(0, 360, n_views_sv3d + 1)[1:] % 360
     assert (
         len(azimuths_deg) == n_views_sv3d
-    ), f"Please provide a list of {n_views_sv3d} values for azimuths_deg! Given {len(azimuths_deg)}"
+    ), f"Please provide a list of {n_views_sv3d} values for azimuths_deg! Given {len(azimuths_deg)} frames"
+    #we subtract from 90 because we want polar angle, which starts from y axis
     polars_rad = np.array([np.deg2rad(90 - e) for e in elevations_deg])
     azimuths_rad = np.array(
         [np.deg2rad((a - azimuths_deg[-1]) % 360) for a in azimuths_deg]
     )
 
     # Sample multi-view images of the first frame using SV3D i.e. images at time 0
+    #TODO: Understand this
+    #Sample a batch of 
     images_t0 = sample_sv3d(
-        images_v0[0],
+        images_v0[0], #takes the first frame
         n_views_sv3d,
         num_steps,
         sv3d_version,
@@ -157,6 +164,7 @@ def sample(
     )
 
     # Load SV4D model
+    #TODO: Check how this is loaded
     model, filter = load_model(
         model_config,
         device,

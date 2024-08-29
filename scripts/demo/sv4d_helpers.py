@@ -4,6 +4,10 @@ from glob import glob
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
+
+#plotting stuff
+import matplotlib.pyplot as plt
+
 import cv2
 import imageio
 import numpy as np
@@ -153,6 +157,7 @@ def read_video(
         images = [Image.open(img_path) for img_path in all_img_paths]
 
     if len(images) < n_frames:
+        #if less, do a video loop up to n_frames
         images = (images + images[::-1])[:n_frames]
     if len(images) != n_frames:
         raise ValueError(f"Input video contains fewer than {n_frames} frames.")
@@ -161,17 +166,22 @@ def read_video(
 
     for image in images:
         image = ToTensor()(image).unsqueeze(0).to(device)
-        images_v0.append(image * 2.0 - 1.0)
+        images_v0.append(image * 2.0 - 1.0) #normalizing images to [-1,1]
     return images_v0
 
 
 def preprocess_video(input_path, remove_bg=False, n_frames=21, W=576, H=576, output_folder=None, image_frame_ratio = 0.917):
+    '''
+    
+    '''
     print(f"preprocess {input_path}")
     if output_folder is None:
         output_folder = os.path.dirname(input_path)
     path = Path(input_path)
     is_video_file = False
     all_img_paths = []
+    
+    #this code allows the user to input a video or a dir of images
     if path.is_file():
         if any([input_path.endswith(x) for x in [".gif", ".mp4"]]):
             is_video_file = True
@@ -210,15 +220,18 @@ def preprocess_video(input_path, remove_bg=False, n_frames=21, W=576, H=576, out
                 # image.thumbnail([W, H], Image.Resampling.LANCZOS)
                 image = remove(image.convert("RGBA"), alpha_matting=True)
             images[i] = image
+        else:
+            break
 
     # Crop video frames, assume the object is already in the center of the image
     white_thresh = 250
     images_v0 = []
+    #init box_coord
     box_coord = [np.inf, np.inf, 0, 0]
-    for image in images:
+    for image in images: #each is a PIL image
         image_arr = np.array(image)
-        in_w, in_h = image_arr.shape[:2]
-        original_center = (in_w // 2, in_h // 2)
+        in_h, in_w = image_arr.shape[:2]
+        original_center = (in_h // 2, in_w // 2) #mid pixel
         if image.mode == "RGBA":
             ret, mask = cv2.threshold(
                 np.array(image.split()[-1]), 0, 255, cv2.THRESH_BINARY
@@ -227,14 +240,19 @@ def preprocess_video(input_path, remove_bg=False, n_frames=21, W=576, H=576, out
             # assume the input image has white background
             ret, mask = cv2.threshold(
                 (np.array(image).mean(-1) <= white_thresh).astype(np.uint8) * 255, 0, 255, cv2.THRESH_BINARY
-            )
-            
-        x, y, w, h = cv2.boundingRect(mask)
+            ) #segmentation mask 
+        #gives you a bounding rectangle with coordinates (x,y), (x+w,y), (x, y+h), (x+w,y+h). reminder that y goes from top to bottom                
+        x, y, w, h = cv2.boundingRect(mask) #(x,y) gives you the coordinates of the top left corner index in matplotlib notation 
+
+        #Finding the smallest bounding box across all frames 
         box_coord[0] = min(box_coord[0], x)
         box_coord[1] = min(box_coord[1], y)
         box_coord[2] = max(box_coord[2], x + w)
         box_coord[3] = max(box_coord[3], y + h)
-    box_square = max(original_center[0] - box_coord[0], original_center[1] - box_coord[1])
+
+    #compute the maximum distance beteen image center and each of the four sides
+    #after finding the maximum distance, shift x and y to located at center - box_square
+    box_square = max(original_center[0] - box_coord[0], original_center[1] - box_coord[1]) #first compute the maximum distance b/w image center and each of the sides
     box_square = max(box_square, box_coord[2] - original_center[0])
     box_square = max(box_square, box_coord[3] - original_center[1])
     x, y, w, h = original_center[0] - box_square, original_center[1] - box_square, 2 * box_square, 2 * box_square
@@ -244,11 +262,13 @@ def preprocess_video(input_path, remove_bg=False, n_frames=21, W=576, H=576, out
         if image.mode == "RGB":
             image = image.convert("RGBA")
         image_arr = np.array(image)
+        #Computes a new side length
         side_len = (
             int(box_size / image_frame_ratio)
             if image_frame_ratio is not None
             else in_w
         )
+        #with new image and centre
         padded_image = np.zeros((side_len, side_len, 4), dtype=np.uint8)
         center = side_len // 2
         padded_image[
@@ -259,11 +279,13 @@ def preprocess_video(input_path, remove_bg=False, n_frames=21, W=576, H=576, out
         rgba = Image.fromarray(padded_image).resize((W, H), Image.LANCZOS)
         # rgba = image.resize((W, H), Image.LANCZOS)
         rgba_arr = np.array(rgba) / 255.0
+        #opacity blending
         rgb = rgba_arr[..., :3] * rgba_arr[..., -1:] + (1 - rgba_arr[..., -1:])
         image = (rgb * 255).astype(np.uint8)
         
         images_v0.append(image)
-    
+
+    #writes the processed frames into the video 
     base_count = len(glob(os.path.join(output_folder, "*.mp4"))) // 12
     processed_file = os.path.join(output_folder, f"{base_count:06d}_process_input.mp4")
     imageio.mimwrite(processed_file, images_v0, fps=10)
@@ -319,13 +341,14 @@ def sample_sv3d(
     value_dict["motion_bucket_id"] = motion_bucket_id
     value_dict["fps_id"] = fps_id
     value_dict["cond_aug"] = cond_aug
-    value_dict["cond_frames"] = image + cond_aug * torch.randn_like(image)
+    value_dict["cond_frames"] = image + cond_aug * torch.randn_like(image) #some noisy form of the image
     if "sv3d_p" in version:
         value_dict["polars_rad"] = polar_rad
         value_dict["azimuths_rad"] = azim_rad
 
     with torch.no_grad():
         with torch.autocast(device):
+            #batch includes cond_frames (noised first frame), cond_frames_without_noise (first frame)
             batch, batch_uc = get_batch_sv3d(
                 get_unique_embedder_keys_from_conditioner(model.conditioner),
                 value_dict,
@@ -1115,6 +1138,7 @@ def get_batch_sv3d(keys, value_dict, N, T, device):
                 .repeat(int(math.prod(N)))
             )
         elif key == "cond_aug":
+            #repeats the value by the product of elements in N
             batch[key] = repeat(
                 torch.tensor([value_dict["cond_aug"]]).to(device),
                 "1 -> b",

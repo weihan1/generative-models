@@ -2,6 +2,25 @@ import os
 import sys
 from glob import glob
 from typing import List, Optional, Union
+import tempfile
+import numpy as np
+
+def get_freer_gpu():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_fname = os.path.join(tmpdir, "tmp")
+        os.system(f'nvidia-smi -q -d Memory |grep -A5 GPU|grep Free >"{tmp_fname}"')
+        if os.path.isfile(tmp_fname):
+            memory_available = [int(x.split()[2]) for x in open(tmp_fname, 'r').readlines()]
+            if len(memory_available) > 0:
+                return np.argmax(memory_available)
+    return None  # The grep doesn't work with all GPUs. If it fails we ignore it.
+
+gpu = get_freer_gpu()
+if gpu is not None:
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
+    print(f"CUDA_VISIBLE_DEVICES set to {gpu}")
+else:
+    print(f"Did not set GPU.")
 
 from tqdm import tqdm
 

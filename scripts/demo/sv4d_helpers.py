@@ -53,6 +53,29 @@ def initial_model_load(model):
     model.model.half()
     return model
 
+def save_video_list(lst_of_videos):
+    '''
+    Given a list of images (normal list or tensor), plot and save them to root.
+    Assume each video in the list of videos is of shape (1,3,H,W) and are normalized between [-1,1]
+    '''
+    if isinstance(lst_of_videos, list):
+        for i, video in enumerate(lst_of_videos):
+            processed_video = video.squeeze() #(3, h ,w)
+            processed_video = torch.permute(processed_video, (1,2,0)) #(h ,w, 3)
+            processed_video = (processed_video + 1)/2
+            processed_video = processed_video.cpu()
+            plt.imshow(processed_video)
+            plt.savefig(f"video_{i}")
+    else:
+        processed_video = torch.permute(lst_of_videos, (0, 2,3,1)) #(batch_size, h, w, channels)
+        batch_size = processed_video.shape[0]
+        processed_video = (processed_video + 1)/2
+        processed_video = processed_video.cpu()
+        for i in range(batch_size):
+            plt.imshow(processed_video[i])
+            plt.savefig(f"video_{i}")
+    plt.close()
+            
 
 def get_resizing_factor(
     desired_shape: Tuple[int, int], current_shape: Tuple[int, int]

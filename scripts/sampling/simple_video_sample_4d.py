@@ -1,13 +1,26 @@
 import os
 import sys
+sys.path.append(os.path.realpath(os.path.join(os.path.dirname(__file__), "../../")))
 from glob import glob
 from typing import List, Optional, Union
 import tempfile
 import numpy as np
+import matplotlib.pyplot as plt
+
+def parse_gpu_index():
+    # Simple argument parsing to extract GPU index before importing torch
+    for arg in sys.argv:
+        if arg.startswith("--gpu="):
+            return arg.split("=")[-1]
+    return None
+
+gpu_index = parse_gpu_index()
+
+if gpu_index is not None:
+    os.environ['CUDA_VISIBLE_DEVICES'] = gpu_index
+
 
 from tqdm import tqdm
-
-sys.path.append(os.path.realpath(os.path.join(os.path.dirname(__file__), "../../")))
 import numpy as np
 import torch
 from fire import Fire
@@ -25,6 +38,7 @@ from scripts.demo.sv4d_helpers import (
     sample_sv3d,
     save_video,
     preprocess_video,
+    save_video_list
 )
 
 
@@ -55,12 +69,12 @@ def sample(
     2. read_video: reads every frame of the video and normalize them between [-1,1] 
     """
     # Set model config
-    T = 5  # number of frames per sample
+    T = 5  # number of frames per sample, using these frames to interpolate (NOT the number of output frames)
     V = 8  # number of views per sample
     F = 8  # vae factor to downsize image->latent
     C = 4
     H, W = img_size, img_size
-    n_frames = 21  # number of input and output video frames
+    n_frames = 21  # number of input and output video frames, this is used in the preprocessing stage to cap the number of frames
     n_views = V + 1  # number of output video views (1 input view + 8 novel views)
     n_views_sv3d = 21
 
@@ -112,7 +126,8 @@ def sample(
         output_folder=output_folder,
         image_frame_ratio=image_frame_ratio,
     )
-    #reads the images as a list of images of shape (1,3,h,w)
+
+    #reads the images as a list of images of shape (1,3,h,w), input video,  
     images_v0 = read_video(processed_input_path, n_frames=n_frames, device=device)
 
     # Get camera viewpoints
@@ -131,7 +146,6 @@ def sample(
     azimuths_rad = np.array(
         [np.deg2rad((a - azimuths_deg[-1]) % 360) for a in azimuths_deg]
     )
-
     # Sample multi-view images of the first frame using SV3D i.e. images at time 0
     #TODO: Understand this
     images_t0 = sample_sv3d(
@@ -148,6 +162,7 @@ def sample(
         azimuths_rad,
         verbose,
     )
+    save_video_list(image_t0)
     images_t0 = torch.roll(images_t0, 1, 0)  # move conditioning image to first frame
 
     # Initialize image matrix

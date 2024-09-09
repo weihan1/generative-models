@@ -5,6 +5,7 @@ from glob import glob
 from typing import List, Optional, Union
 import tempfile
 import numpy as np
+from pathlib import Path
 import matplotlib.pyplot as plt
 
 def parse_gpu_index():
@@ -60,6 +61,7 @@ def sample(
     image_frame_ratio: Optional[float] = 0.917,
     verbose: Optional[bool] = False,
     remove_bg: bool = False,
+    output_name: str = None
 ):
     """
     Simple script to generate multiple novel-view videos conditioned on a video `input_path` or multiple frames, one for each
@@ -68,6 +70,17 @@ def sample(
     1. preprocess_video: removes the background, find the minimum rectangle that contains all frames. Then find the smallest bouding square. 
     2. read_video: reads every frame of the video and normalize them between [-1,1] 
     """
+    
+    #set the name of the output video
+    if not output_name: 
+        path= Path(input_path)
+        if path.is_file():
+            output_name = input_path.split("/")[-1].split(".")[0] #if the input path is a file
+        else: #it is a directory, so just use the name of the directory
+            output_name = input_path.split("/")[-1]
+        
+        
+    
     # Set model config
     T = 5  # number of frames per sample, using these frames to interpolate (NOT the number of output frames)
     V = 8  # number of views per sample
@@ -76,7 +89,7 @@ def sample(
     H, W = img_size, img_size
     n_frames = 21  # number of input and output video frames, this is used in the preprocessing stage to cap the number of frames
     n_views = V + 1  # number of output video views (1 input view + 8 novel views)
-    n_views_sv3d = 21
+    n_views_sv3d = 21 #this is the number of output views in after sv3d finishes sampling
 
     #this dictates which view we are sampling
     subsampled_views = np.array(
@@ -130,6 +143,8 @@ def sample(
     #reads the images as a list of images of shape (1,3,h,w), input video,  
     images_v0 = read_video(processed_input_path, n_frames=n_frames, device=device)
 
+
+    #these angle stuff are only relevant for the sampling the multi-view images
     # Get camera viewpoints
     if isinstance(elevations_deg, float) or isinstance(elevations_deg, int):
         elevations_deg = [elevations_deg] * n_views_sv3d
@@ -147,7 +162,8 @@ def sample(
         [np.deg2rad((a - azimuths_deg[-1]) % 360) for a in azimuths_deg]
     )
     # Sample multi-view images of the first frame using SV3D i.e. images at time 0
-    #TODO: Understand this
+
+    #TODO: Understand this, the output essentially is just the 20 viewpoints of the image (we won't use all 20 though)
     images_t0 = sample_sv3d(
         images_v0[0], #takes the first frame
         n_views_sv3d,
@@ -162,23 +178,24 @@ def sample(
         azimuths_rad,
         verbose,
     )
-    save_video_list(image_t0)
+    #save_video_list(images_t0)
     images_t0 = torch.roll(images_t0, 1, 0)  # move conditioning image to first frame
 
     # Initialize image matrix
-    img_matrix = [[None] * n_views for _ in range(n_frames)]
+    img_matrix = [[None] * n_views for _ in range(n_frames)] #shape: (n_frames, n_views)
     for i, v in enumerate(subsampled_views):
         img_matrix[0][i] = images_t0[v].unsqueeze(0)
     for t in range(n_frames):
         img_matrix[t][0] = images_v0[t]
 
-    base_count = len(glob(os.path.join(output_folder, "*.mp4"))) // 12
+    #base_count = len(glob(os.path.join(output_folder, "*.mp4"))) // 12
+    
     save_video(
-        os.path.join(output_folder, f"{base_count:06d}_t000.mp4"),
+        os.path.join(output_folder, f"{output_name}_t000.mp4"),
         img_matrix[0],
     )
     save_video(
-        os.path.join(output_folder, f"{base_count:06d}_v000.mp4"),
+        os.path.join(output_folder, f"{output_name}_v000.mp4"),
         [img_matrix[t][0] for t in range(n_frames)],
     )
 
@@ -269,7 +286,7 @@ def sample(
 
     # Save output videos
     for v in view_indices:
-        vid_file = os.path.join(output_folder, f"{base_count:06d}_v{v:03d}.mp4")
+        vid_file = os.path.join(output_folder, f"{output_name}_v{v:03d}.mp4")
         print(f"Saving {vid_file}")
         save_video(vid_file, [img_matrix[t][v] for t in range(n_frames)])
 
@@ -277,7 +294,7 @@ def sample(
     diag_frames = [
         img_matrix[t][(t // (n_frames // n_views)) % n_views] for t in range(n_frames)
     ]
-    vid_file = os.path.join(output_folder, f"{base_count:06d}_diag.mp4")
+    vid_file = os.path.join(output_folder, f"{output_name}_diag.mp4")
     print(f"Saving {vid_file}")
     save_video(vid_file, diag_frames)
 

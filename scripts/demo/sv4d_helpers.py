@@ -65,7 +65,7 @@ def save_video_list(lst_of_videos):
             processed_video = (processed_video + 1)/2
             processed_video = processed_video.cpu()
             plt.imshow(processed_video)
-            plt.savefig(f"video_{i}")
+            plt.savefig(f"frame_{i}")
     else:
         processed_video = torch.permute(lst_of_videos, (0, 2,3,1)) #(batch_size, h, w, channels)
         batch_size = processed_video.shape[0]
@@ -73,7 +73,7 @@ def save_video_list(lst_of_videos):
         processed_video = processed_video.cpu()
         for i in range(batch_size):
             plt.imshow(processed_video[i])
-            plt.savefig(f"video_{i}")
+            plt.savefig(f"frame_{i}")
     plt.close()
             
 

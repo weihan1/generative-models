@@ -69,6 +69,11 @@ class AbstractEmbModel(nn.Module):
 
 
 class GeneralConditioner(nn.Module):
+    '''
+    General conditioner module
+    OUTPUT_DIM2KEYS maps a specific dimension to an operation
+    ucg_rate refers to the unconditional guidance rate
+    '''
     OUTPUT_DIM2KEYS = {2: "vector", 3: "crossattn", 4: "concat"} # , 5: "concat"}
     KEY2CATDIM = {"vector": 1, "crossattn": 2, "concat": 1, "cond_view": 1, "cond_motion": 1}
 
@@ -128,8 +133,8 @@ class GeneralConditioner(nn.Module):
             with embedding_context():
                 if hasattr(embedder, "input_key") and (embedder.input_key is not None):
                     if embedder.legacy_ucg_val is not None:
-                        batch = self.possibly_get_ucg_val(embedder, batch)
-                    emb_out = embedder(batch[embedder.input_key])
+                        batch = self.possibly_get_ucg_val(embedder, batch) 
+                    emb_out = embedder(batch[embedder.input_key]) #embed first_frame 
                 elif hasattr(embedder, "input_keys"):
                     emb_out = embedder(*[batch[k] for k in embedder.input_keys])
             assert isinstance(
@@ -144,8 +149,9 @@ class GeneralConditioner(nn.Module):
                     out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
 
                 if embedder.ucg_rate > 0.0 and embedder.legacy_ucg_val is None:
+                    #desactivate some entries
                     emb = (
-                        expand_dims_like(
+                        expand_dims_like( #expanding dim until dimensions equal
                             torch.bernoulli(
                                 (1.0 - embedder.ucg_rate)
                                 * torch.ones(emb.shape[0], device=emb.device)

@@ -172,7 +172,7 @@ def read_video(
 
 def preprocess_video(input_path, remove_bg=False, n_frames=21, W=576, H=576, output_folder=None, image_frame_ratio = 0.917):
     '''
-    
+    Essentially just removes the background and apply an algorithm to bound the scene 
     '''
     print(f"preprocess {input_path}")
     if output_folder is None:
@@ -329,20 +329,22 @@ def sample_sv3d(
     else:
         model = sv3d_model
 
-    load_module_gpu(model)
+    load_module_gpu(model) #putting the code to gpu
 
     H, W = image.shape[2:]
-    F = 8
-    C = 4
-    shape = (num_frames, C, H // F, W // F)
+
+    #These are just the latent vae default hyperparams
+    F = 8 # vae factor to downsize image->latent.  
+    C = 4 # number of channels
+    shape = (num_frames, C, H // F, W // F) #21, 4, 72, 72
 
     value_dict = {}
-    value_dict["cond_frames_without_noise"] = image
-    value_dict["motion_bucket_id"] = motion_bucket_id
-    value_dict["fps_id"] = fps_id
-    value_dict["cond_aug"] = cond_aug
+    value_dict["cond_frames_without_noise"] = image #image without noise
+    value_dict["motion_bucket_id"] = motion_bucket_id #some parameter controlling motion
+    value_dict["fps_id"] = fps_id #controlling fps
+    value_dict["cond_aug"] = cond_aug #controls how much we want to condition on the 
     value_dict["cond_frames"] = image + cond_aug * torch.randn_like(image) #some noisy form of the image
-    if "sv3d_p" in version:
+    if "sv3d_p" in version: #extension of sv3d_u, allows the creation of 3d videos along specified paths
         value_dict["polars_rad"] = polar_rad
         value_dict["azimuths_rad"] = azim_rad
 

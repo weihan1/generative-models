@@ -5,23 +5,6 @@ from typing import List, Optional, Union
 import tempfile
 import numpy as np
 
-def get_freer_gpu():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_fname = os.path.join(tmpdir, "tmp")
-        os.system(f'nvidia-smi -q -d Memory |grep -A5 GPU|grep Free >"{tmp_fname}"')
-        if os.path.isfile(tmp_fname):
-            memory_available = [int(x.split()[2]) for x in open(tmp_fname, 'r').readlines()]
-            if len(memory_available) > 0:
-                return np.argmax(memory_available)
-    return None  # The grep doesn't work with all GPUs. If it fails we ignore it.
-
-gpu = get_freer_gpu()
-if gpu is not None:
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
-    print(f"CUDA_VISIBLE_DEVICES set to {gpu}")
-else:
-    print(f"Did not set GPU.")
-
 from tqdm import tqdm
 
 sys.path.append(os.path.realpath(os.path.join(os.path.dirname(__file__), "../../")))
@@ -80,9 +63,13 @@ def sample(
     n_frames = 21  # number of input and output video frames
     n_views = V + 1  # number of output video views (1 input view + 8 novel views)
     n_views_sv3d = 21
+
+    #this dictates which view we are sampling
     subsampled_views = np.array(
         [0, 2, 5, 7, 9, 12, 14, 16, 19]
     )  # subsample (V+1=)9 (uniform) views from 21 SV3D views
+    gpu_id = os.environ.get("CUDA_VISIBLE_DEVICES")
+    print(f"the current gpu id is {gpu_id}")
 
     model_config = "scripts/sampling/configs/sv4d.yaml"
     version_dict = {
@@ -116,7 +103,6 @@ def sample(
 
     # Read input video frames i.e. images at view 0
     print(f"Reading {input_path}")
-    #TODO: Understand these two functions and write examples for them
     processed_input_path = preprocess_video(
         input_path,
         remove_bg=remove_bg,
@@ -148,7 +134,6 @@ def sample(
 
     # Sample multi-view images of the first frame using SV3D i.e. images at time 0
     #TODO: Understand this
-    #Sample a batch of 
     images_t0 = sample_sv3d(
         images_v0[0], #takes the first frame
         n_views_sv3d,
@@ -198,6 +183,7 @@ def sample(
     model.en_and_decode_n_samples_a_time = decoding_t
 
     # Interleaved sampling for anchor frames
+    # TODO: Understand this strategy
     t0, v0 = 0, 0
     frame_indices = np.arange(T - 1, n_frames, T - 1)  # [4, 8, 12, 16, 20]
     view_indices = np.arange(V) + 1
